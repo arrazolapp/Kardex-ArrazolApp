@@ -9,11 +9,11 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import {
     getAuth, onAuthStateChanged, signInWithEmailAndPassword,
-    createUserWithEmailAndPassword, signOut, setPersistence, browserLocalPersistence
+    signOut, setPersistence, browserLocalPersistence
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import {
-    getFirestore, doc, getDoc, setDoc, collection, getDocs
-  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+    getDatabase, ref, get, set, update, remove
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
   // ============================================================
   // 🔧 Configuración de Firebase del proyecto (tracking-gps-arrazolapp)
@@ -31,17 +31,17 @@
 
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
-  const dbFirestore = getFirestore(app);
+  const rtdb = getDatabase(app);
 
-  // Empresa (nodo compartido en Firestore). Todos comparten esta misma base.
+  // Empresa: mismo nodo que usa tu portal (Realtime Database).
   const COMPANY_ID = "Instamasa";
 
   // Expone lo necesario al script principal (no módulo) en window.FB
   window.FB = {
-    auth, dbFirestore,
-    onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword,
+    auth, rtdb,
+    onAuthStateChanged, signInWithEmailAndPassword,
     signOut, setPersistence, browserLocalPersistence,
-    doc, getDoc, setDoc, collection, getDocs,
+    ref, get, set, update, remove,
     COMPANY_ID
   };
   window.dispatchEvent(new Event("fb-ready"));
@@ -359,6 +359,10 @@
     .grid-cards{grid-template-columns:1fr 1fr;}
     .tabs button{padding:11px 10px;font-size:12.3px;}
   }
+  .admin-only{ display:none; }
+  body.ver-todo .admin-only{ display:block; }
+  body.ver-todo .admin-only.inline{ display:inline-block; }
+  .oculto-siempre{ display:none !important; }
 </style>
 </head>
 <body>
@@ -388,8 +392,8 @@
         <input type="password" id="authPassword" placeholder="••••••••" autocomplete="current-password" required minlength="6">
       </div>
       <button type="submit" class="btn btn-primary" id="btnAuthSubmit" style="width:100%;">Iniciar sesión</button>
-      <div class="auth-switch">
-        <span id="authSwitchText">¿No tienes cuenta?</span> <a id="authSwitchLink">Crear cuenta</a>
+      <div class="auth-switch" style="display:none;">
+        <span id="authSwitchText"></span> <a id="authSwitchLink"></a>
       </div>
     </form>
   </div>
@@ -410,8 +414,8 @@
       <span id="userEmailLabel">—</span>
       <button id="btnLogout">Salir</button>
     </div>
-    <button id="btnExport">Exportar respaldo</button>
-    <button id="btnImport">Importar respaldo</button>
+    <button id="btnExport" class="admin-only inline">Exportar respaldo</button>
+    <button id="btnImport" class="admin-only inline">Importar respaldo</button>
     <input type="file" id="fileImport" accept="application/json" style="display:none">
   </div>
 </div>
@@ -421,7 +425,8 @@
 </div>
 
 <nav class="tabs">
-  <button data-tab="panel" class="active">Panel de ruta</button>
+  <button data-tab="rol" class="active">Rol de hoy</button>
+  <button data-tab="panel">Panel de ruta</button>
   <button data-tab="visita">Registrar visita</button>
   <button data-tab="clientes">Clientes</button>
   <button data-tab="productos">Productos</button>
@@ -430,8 +435,61 @@
 
 <main>
 
+  <!-- ===================== ROL DE HOY ===================== -->
+  <section id="tab-rol" class="tab-panel active">
+    <div class="card">
+      <p class="eyebrow">Rol de visitas</p>
+      <h2 style="margin-bottom:4px;">Clientes a visitar</h2>
+      <p style="font-size:13px;color:var(--muted);margin:0 0 14px;">
+        Elegí tu nombre, la semana y el día. La lista sale en el orden de visita. Tocá «Registrar visita» para ir directo al pedido.
+      </p>
+      <div class="form-row" style="margin-top:4px;">
+        <div>
+          <label for="rolVendedor">Vendedor</label>
+          <select id="rolVendedor"></select>
+        </div>
+        <div>
+          <label for="rolSemana">Semana</label>
+          <select id="rolSemana"></select>
+        </div>
+        <div>
+          <label for="rolDia">Día</label>
+          <select id="rolDia">
+            <option value="lunes">Lunes</option>
+            <option value="martes">Martes</option>
+            <option value="miercoles">Miércoles</option>
+            <option value="jueves">Jueves</option>
+            <option value="viernes">Viernes</option>
+            <option value="sabado">Sábado</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 id="rolListaTitulo" style="margin-bottom:14px;">Ruta del día</h2>
+      <div class="table-wrap" id="rolTableWrap"></div>
+    </div>
+
+    <div class="card admin-only">
+      <div class="card-head">
+        <div>
+          <p class="eyebrow">Carga del rol</p>
+          <h2>Importar rol de visitas desde Excel</h2>
+        </div>
+      </div>
+      <p style="font-size:13px;color:var(--muted);margin:0 0 14px;">
+        Subí el archivo del rol (columnas Cod.Cliente, Semana, Dia, Secuencia, Cod.Vendedor, Vendedor). Reemplaza el rol anterior. Lo cargás una vez y lo ven todos.
+      </p>
+      <div class="row-flex">
+        <button class="btn btn-primary" id="btnImportarRolExcel">⬆ Importar rol desde Excel</button>
+        <input type="file" id="fileImportRol" accept=".xlsx,.xls" style="display:none">
+      </div>
+    </div>
+  </section>
+
   <!-- ===================== PANEL ===================== -->
-  <section id="tab-panel" class="tab-panel active">
+  <section id="tab-panel" class="tab-panel">
     <div class="grid-cards" id="panelStats"></div>
     <div class="card">
       <div class="card-head">
@@ -514,7 +572,7 @@
 
   <!-- ===================== CLIENTES ===================== -->
   <section id="tab-clientes" class="tab-panel">
-    <div class="card">
+    <div class="card oculto-siempre">
       <p class="eyebrow" id="clienteFormEyebrow">Nuevo registro</p>
       <h2 id="clienteFormTitle">Agregar cliente</h2>
       <input type="hidden" id="clienteEditId">
@@ -606,7 +664,7 @@
       </div>
     </div>
 
-    <div class="card">
+    <div class="card oculto-siempre">
       <div class="card-head">
         <div>
           <p class="eyebrow">Carga masiva</p>
@@ -631,7 +689,7 @@
 
   <!-- ===================== PRODUCTOS ===================== -->
   <section id="tab-productos" class="tab-panel">
-    <div class="card">
+    <div class="card admin-only">
       <p class="eyebrow">Catálogo</p>
       <h2 id="productoFormTitle">Agregar producto</h2>
       <input type="hidden" id="productoEditId">
@@ -663,7 +721,7 @@
       </div>
     </div>
 
-    <div class="card">
+    <div class="card admin-only">
       <div class="card-head">
         <div>
           <p class="eyebrow">Carga masiva</p>
@@ -726,21 +784,36 @@
 (function(){
   "use strict";
 
-  /* ===================== ALMACENAMIENTO (Firestore compartido) =====================
-     Base ÚNICA para toda la empresa. Todos los que inician sesión ven lo mismo.
-       · Catálogo (clientes + productos):  companies/Instamasa/kardex/catalogo
-       · Visitas: cada dispositivo guarda las suyas en
-                  companies/Instamasa/kardex_visitas/{uid}
-         y al cargar se juntan TODAS (así nadie pierde visitas de otro).
-  ================================================================================= */
+  /* ===================== ALMACENAMIENTO (Realtime Database del portal) =====================
+     Integrado con tu sistema ArrazolApp. Nodos usados:
+       · Clientes (522, del Gestor):   companies/Instamasa/clientes            (solo lectura)
+       · Agentes GPS:                  companies/Instamasa/agents              (solo lectura)
+       · Perfil / identidad:           portal_users/{uid}  → rol, codigo_agente, agent_id
+       · Productos del Kardex:         companies/Instamasa/kardex_productos
+       · Rol de visitas:               companies/Instamasa/rol_visitas
+       · Pedidos del Kardex:           companies/Instamasa/kardex_visitas/{uid}
+     El vendedor ve SU rol automáticamente (por codigo_agente). Admin/supervisor ven todo.
+  ======================================================================================= */
   const LOCAL_KEY_PREFIX = "kardex_clientes_db_v1_";
   const COMPANY = "Instamasa";
 
+  const CLIENTES_PATH = `companies/${COMPANY}/clientes`;
+  const PROD_PATH     = `companies/${COMPANY}/kardex_productos`;
+  const ROL_PATH      = `companies/${COMPANY}/rol_visitas`;
+  const VIS_ROOT      = `companies/${COMPANY}/kardex_visitas`;
+  const VIS_PATH      = (u)=> `${VIS_ROOT}/${u}`;
+
   let db = { clientes: [], productos: [], visitas: [] };
+  let rolVisitas = [];
   let currentUid = null;
   let currentEmail = null;
-  let catTimer = null;   // debounce guardado de catálogo
-  let visTimer = null;   // debounce guardado de visitas
+  let currentRol = "agente";   // admin | supervisor | agente
+  let miCodigoAgente = "";     // vincula con Cod.Vendedor del rol
+  let miNombre = "";
+  let miAgentId = "";
+  let catTimer = null, visTimer = null;
+
+  function puedeVerTodo(){ return currentRol === "admin" || currentRol === "supervisor"; }
 
   function uid(){
     if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
@@ -756,7 +829,7 @@
     else { el.textContent = "Sincronizado con la nube"; }
   }
 
-  function localKey(){ return LOCAL_KEY_PREFIX + "shared"; }
+  function localKey(){ return LOCAL_KEY_PREFIX + (currentUid || "anon"); }
   function loadLocalDB(){
     try{ const raw = localStorage.getItem(localKey()); if (raw) return JSON.parse(raw); }catch(e){}
     return { clientes: [], productos: [], visitas: [] };
@@ -765,60 +838,90 @@
     try{ localStorage.setItem(localKey(), JSON.stringify(db)); }catch(e){}
   }
 
-  /* ---- referencias Firestore ---- */
-  function catalogoRef(){ return window.FB.doc(window.FB.dbFirestore, "companies", COMPANY, "kardex", "catalogo"); }
-  function visitasRef(u){ return window.FB.doc(window.FB.dbFirestore, "companies", COMPANY, "kardex_visitas", u); }
-  function visitasCol(){ return window.FB.collection(window.FB.dbFirestore, "companies", COMPANY, "kardex_visitas"); }
+  /* ---- helpers Realtime Database ---- */
+  function rref(path){ return window.FB.ref(window.FB.rtdb, path); }
+  async function rget(path){ const s = await window.FB.get(rref(path)); return s.exists() ? s.val() : null; }
+  async function rset(path, val){ return window.FB.set(rref(path), val); }
 
-  // Carga todo lo compartido (catálogo + visitas de todos)
+  // Mapea el cliente del portal (codigo/nombre/vendedor) al formato que usa el Kardex
+  function mapCliente(id, c){
+    c = c || {};
+    return {
+      id,
+      codCliente: c.codigo || "",
+      razonSocial: c.nombre || "",
+      nombreFantasia: c.nombre || "",
+      direccion: c.direccion || "",
+      phone1: c.phone1 || c.telefono || "",
+      phone2: "",
+      vendedor: c.vendedor || "",
+      frecuenciaDias: Number(c.frecuencia) || 15,
+      lat: c.lat, lng: c.lng,
+      activo: c.activo !== false
+    };
+  }
+
+  /* ---- perfil / identidad ---- */
+  async function cargarPerfil(){
+    let p = null;
+    try{ p = await rget(`portal_users/${currentUid}`); }catch(e){}
+    p = p || {};
+    currentRol = p.rol || "agente";
+    miCodigoAgente = p.codigo_agente || "";
+    miNombre = p.nombre || currentEmail || "";
+    miAgentId = p.agent_id || "";
+    return p;
+  }
+
+  async function guardarRol(){
+    try{ await rset(ROL_PATH, { items: rolVisitas, actualizadoEn: new Date().toISOString() }); }
+    catch(e){ console.error("Error guardando rol:", e); }
+  }
+
+  // Carga todo desde tu Realtime Database
   async function loadDB(){
     db = { clientes: [], productos: [], visitas: [] };
     if (!currentUid){ db = loadLocalDB(); return; }
     setSyncStatus("syncing");
     try{
-      // 1) Catálogo compartido
-      const snapCat = await window.FB.getDoc(catalogoRef());
-      if (snapCat.exists()){
-        const c = snapCat.data();
-        db.clientes = c.clientes || [];
-        db.productos = c.productos || [];
-      } else {
-        // Migración una sola vez: si existe tu kardex anterior, se sube al catálogo compartido
-        try{
-          const legacy = await window.FB.getDoc(window.FB.doc(window.FB.dbFirestore, "usuarios", currentUid, "data", "kardex"));
-          if (legacy.exists()){
-            const ld = legacy.data();
-            db.clientes = ld.clientes || [];
-            db.productos = ld.productos || [];
-            await window.FB.setDoc(catalogoRef(), { clientes: db.clientes, productos: db.productos, actualizadoEn: new Date().toISOString() });
-            if ((ld.visitas || []).length){
-              const mias = ld.visitas.map(v=>({ ...v, ownerUid: currentUid }));
-              await window.FB.setDoc(visitasRef(currentUid), { items: mias, actualizadoEn: new Date().toISOString() });
-            }
-            setTimeout(()=> toast("Datos anteriores cargados al catálogo compartido"), 700);
-          }
-        }catch(e){ console.error("Migración:", e); }
-      }
+      await cargarPerfil();
 
-      // 2) Visitas de TODOS los dispositivos, juntas
+      // 1) Clientes (los del Gestor de Clientes del portal)
+      const cliObj = await rget(CLIENTES_PATH) || {};
+      db.clientes = Object.entries(cliObj).map(([id,c])=> mapCliente(id, c));
+
+      // 2) Productos del Kardex
+      const prod = await rget(PROD_PATH);
+      db.productos = (prod && prod.items) ? prod.items : [];
+
+      // 3) Rol de visitas
+      const rol = await rget(ROL_PATH);
+      rolVisitas = (rol && rol.items) ? rol.items : [];
+
+      // 4) Pedidos: admin/supervisor ven todos; vendedor solo los suyos
       let visitas = [];
-      const snap = await window.FB.getDocs(visitasCol());
-      snap.forEach(d=>{
-        const its = (d.data().items || []).map(v=>({ ...v, ownerUid: v.ownerUid || d.id }));
-        visitas = visitas.concat(its);
-      });
+      if (puedeVerTodo()){
+        const all = await rget(VIS_ROOT) || {};
+        Object.entries(all).forEach(([u, node])=>{
+          const its = ((node && node.items) || []).map(v=>({ ...v, ownerUid: v.ownerUid || u }));
+          visitas = visitas.concat(its);
+        });
+      } else {
+        const mine = await rget(VIS_PATH(currentUid));
+        visitas = ((mine && mine.items) || []).map(v=>({ ...v, ownerUid: currentUid }));
+      }
       db.visitas = visitas;
 
       saveLocalDB();
       setSyncStatus("ok");
     }catch(e){
-      console.error("Error cargando de Firestore, usando respaldo local:", e);
+      console.error("Error cargando de Realtime DB, usando respaldo local:", e);
       db = loadLocalDB();
       setSyncStatus("offline");
     }
   }
 
-  // Guarda el CATÁLOGO compartido (clientes + productos)
+  // Guarda el catálogo de PRODUCTOS del Kardex (los clientes se gestionan en el portal)
   async function guardarCatalogo(){
     saveLocalDB();
     if (!currentUid) return;
@@ -827,19 +930,15 @@
       catTimer = setTimeout(async ()=>{
         setSyncStatus("syncing");
         try{
-          await window.FB.setDoc(catalogoRef(), {
-            clientes: db.clientes,
-            productos: db.productos,
-            actualizadoEn: new Date().toISOString()
-          });
+          await rset(PROD_PATH, { items: db.productos, actualizadoEn: new Date().toISOString() });
           setSyncStatus("ok");
-        }catch(e){ console.error("Error guardando catálogo:", e); setSyncStatus("offline"); }
+        }catch(e){ console.error("Error guardando productos:", e); setSyncStatus("offline"); }
         resolve();
       }, 400);
     });
   }
 
-  // Guarda MIS visitas (las de este dispositivo). Al recargar, todos las ven.
+  // Guarda MIS pedidos (los de este usuario) en su propio nodo
   async function saveDB(){
     saveLocalDB();
     if (!currentUid) return;
@@ -849,17 +948,19 @@
         setSyncStatus("syncing");
         try{
           const mias = db.visitas.filter(v=> !v.ownerUid || v.ownerUid === currentUid);
-          await window.FB.setDoc(visitasRef(currentUid), {
+          await rset(VIS_PATH(currentUid), {
             items: mias,
             email: currentEmail || "",
+            nombre: miNombre || "",
             actualizadoEn: new Date().toISOString()
           });
           setSyncStatus("ok");
-        }catch(e){ console.error("Error guardando visitas:", e); setSyncStatus("offline"); }
+        }catch(e){ console.error("Error guardando pedidos:", e); setSyncStatus("offline"); }
         resolve();
       }, 400);
     });
   }
+
 
 
   /* ===================== UTILIDADES DE FECHA ===================== */
@@ -1018,6 +1119,7 @@
     document.querySelectorAll(".tab-panel").forEach(p=> p.classList.toggle("active", p.id === "tab-"+tab));
     if (tab === "visita") renderVisitaSelectores();
     if (tab === "kardex") renderKardexSelectores();
+    if (tab === "rol") renderRolHoy();
   }
 
   /* ===================== RENDER: PANEL ===================== */
@@ -1094,10 +1196,7 @@
         <td class="muted small" data-label="Teléfono">${esc(c.phone1 || "—")}</td>
         <td data-label="Frecuencia">${frecuenciaLabel(clienteFrecuenciaDias(c))}</td>
         <td data-label="Estado"><span class="badge ${est.estado}">${esc(est.label)}</span></td>
-        <td class="actions-cell" data-label="">
-          <button class="btn btn-sm btn-ghost" data-edit-cliente="${c.id}">Editar</button>
-          <button class="btn btn-sm btn-danger" data-del-cliente="${c.id}">Eliminar</button>
-        </td>
+        <td class="actions-cell" data-label=""><span class="muted small">—</span></td>
       </tr>`;
     }).join("");
     wrap.innerHTML = `
@@ -1234,8 +1333,8 @@
         <td class="muted small" data-label="Cód. barras">${esc(p.codigoBarra || "—")}</td>
         <td class="muted small" data-label="Imagen">${esc(p.imagen || "—")}</td>
         <td class="actions-cell" data-label="">
-          <button class="btn btn-sm btn-ghost" data-edit-producto="${p.id}">Editar</button>
-          <button class="btn btn-sm btn-danger" data-del-producto="${p.id}">Eliminar</button>
+          ${puedeVerTodo() ? `<button class="btn btn-sm btn-ghost" data-edit-producto="${p.id}">Editar</button>
+          <button class="btn btn-sm btn-danger" data-del-producto="${p.id}">Eliminar</button>` : `<span class="muted small">—</span>`}
         </td>
       </tr>`).join("");
     wrap.innerHTML = `<table class="data responsive-table"><thead><tr><th>Código</th><th>Producto</th><th>Unidad</th><th>Cód. barras</th><th>Imagen</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
@@ -1729,6 +1828,173 @@
     e.target.value = "";
   });
 
+  /* ===================== ROL DE VISITAS ===================== */
+  const DIAS_SEMANA = ["domingo","lunes","martes","miercoles","jueves","viernes","sabado"];
+  const _normDia = (s)=> String(s||"").trim().toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g,""); // quita acentos: miércoles -> miercoles
+
+  function diaHoy(){
+    const d = DIAS_SEMANA[new Date().getDay()];
+    return (d === "domingo") ? "lunes" : d; // domingo no tiene ruta: cae en lunes
+  }
+
+  // Llena los selectores de vendedor y semana según el rol cargado
+  function poblarSelectoresRol(){
+    const selV = document.getElementById("rolVendedor");
+    const selS = document.getElementById("rolSemana");
+    const selD = document.getElementById("rolDia");
+    if (!selV || !selS || !selD) return;
+
+    // Vendedores del rol por CÓDIGO (codVendedor); etiqueta = nombre
+    const mapaVend = new Map();
+    rolVisitas.forEach(r=>{
+      const code = (r.codVendedor||"").trim();
+      if (code && !mapaVend.has(code)) mapaVend.set(code, (r.vendedor||code).trim());
+    });
+    const codigos = [...mapaVend.keys()].sort((a,b)=>a.localeCompare(b));
+
+    const semanas = [...new Set(rolVisitas.map(r=> (r.semana||"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+    const prevS = localStorage.getItem("rol_semana") || selS.value;
+    selS.innerHTML = semanas.length ? semanas.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join("") : `<option value="">—</option>`;
+    if (prevS && semanas.includes(prevS)) selS.value = prevS;
+
+    if (puedeVerTodo()){
+      selV.disabled = false;
+      const prevV = localStorage.getItem("rol_vendedor") || selV.value;
+      selV.innerHTML = `<option value="">— elegí un vendedor —</option>` +
+        codigos.map(c=>`<option value="${esc(c)}">${esc(mapaVend.get(c))} (${esc(c)})</option>`).join("");
+      if (prevV && codigos.includes(prevV)) selV.value = prevV;
+    } else {
+      // Vendedor: bloqueado a su propio código de agente
+      selV.disabled = true;
+      const nombre = mapaVend.get(miCodigoAgente) || miNombre || "";
+      selV.innerHTML = `<option value="${esc(miCodigoAgente)}">${esc(nombre || miCodigoAgente || "—")}</option>`;
+      selV.value = miCodigoAgente;
+    }
+    if (!selD.value) selD.value = diaHoy();
+  }
+
+  function renderRolHoy(){
+    poblarSelectoresRol();
+    const selV = document.getElementById("rolVendedor");
+    const selS = document.getElementById("rolSemana");
+    const selD = document.getElementById("rolDia");
+    const wrap = document.getElementById("rolTableWrap");
+    const titulo = document.getElementById("rolListaTitulo");
+    if (!wrap) return;
+
+    if (!rolVisitas.length){
+      wrap.innerHTML = `<div class="empty"><strong>Todavía no hay rol cargado</strong>El administrador debe importar el rol de visitas desde Excel.</div>`;
+      return;
+    }
+
+    if (!puedeVerTodo() && !miCodigoAgente){
+      wrap.innerHTML = `<div class="empty"><strong>Tu usuario no tiene código de agente</strong>Pedile al administrador que te asigne tu código en Gestión de Usuarios del portal.</div>`;
+      return;
+    }
+
+    const code = selV.value, sem = selS.value, dia = selD.value;
+    const rVend = rolVisitas.find(x=>(x.codVendedor||"").trim()===code);
+    const nombreVend = rVend ? (rVend.vendedor||code) : code;
+    if (titulo) titulo.textContent = code ? `Ruta de ${nombreVend} — ${sem}, ${dia}` : "Ruta del día";
+
+    if (!code){
+      wrap.innerHTML = `<div class="empty"><strong>Elegí un vendedor</strong>Seleccioná el vendedor arriba para ver la ruta del día.</div>`;
+      return;
+    }
+
+    const filas = rolVisitas
+      .filter(r => (r.codVendedor||"").trim() === code && (r.semana||"").trim() === sem && _normDia(r.dia) === _normDia(dia))
+      .sort((a,b)=> (Number(a.secuencia)||0) - (Number(b.secuencia)||0));
+
+    if (!filas.length){
+      wrap.innerHTML = `<div class="empty"><strong>Sin visitas para este día</strong>No hay clientes en el rol para ${esc(nombreVend)} en ${esc(sem)}, ${esc(dia)}.</div>`;
+      return;
+    }
+
+    const rows = filas.map(r=>{
+      const cli = db.clientes.find(c => (c.codCliente||"").trim().toUpperCase() === (r.cod||"").trim().toUpperCase());
+      const nombre = r.comercial || r.nombre || (cli ? (cli.nombreFantasia || cli.razonSocial) : "") || "(sin nombre)";
+      const btn = cli
+        ? `<button class="btn btn-sm btn-primary" data-rol-visita="${cli.id}">Registrar visita</button>`
+        : `<span class="muted small">No está en clientes</span>`;
+      return `<tr>
+        <td data-label="#" class="muted small"><b>${esc(String(r.secuencia||"—"))}</b></td>
+        <td data-label="Cod" class="muted small">${esc(r.cod||"—")}</td>
+        <td data-label="Cliente"><b>${esc(nombre)}</b>${r.nombre && r.comercial && r.nombre!==r.comercial ? `<div class="muted small">${esc(r.nombre)}</div>` : ""}</td>
+        <td class="actions-cell" data-label="">${btn}</td>
+      </tr>`;
+    }).join("");
+
+    wrap.innerHTML = `<table class="data responsive-table"><thead><tr><th>#</th><th>Cod</th><th>Cliente</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+
+    wrap.querySelectorAll("[data-rol-visita]").forEach(b=> b.addEventListener("click", ()=>{
+      activarTab("visita");
+      const sel = document.getElementById("visCliente");
+      sel.value = b.dataset.rolVisita;
+      onVisitaClienteChange();
+    }));
+  }
+
+  // Cambios en los selectores → re-render y recordar elección
+  ["rolVendedor","rolSemana","rolDia"].forEach(id=>{
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("change", ()=>{
+      localStorage.setItem("rol_vendedor", document.getElementById("rolVendedor").value);
+      localStorage.setItem("rol_semana", document.getElementById("rolSemana").value);
+      renderRolHoy();
+    });
+  });
+
+  // Importar rol desde Excel
+  const _btnRol = document.getElementById("btnImportarRolExcel");
+  if (_btnRol) _btnRol.addEventListener("click", ()=> document.getElementById("fileImportRol").click());
+  const _fileRol = document.getElementById("fileImportRol");
+  if (_fileRol) _fileRol.addEventListener("change", (e)=>{
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (ev)=>{
+      try{
+        const wb = XLSX.read(ev.target.result, { type: "array" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const filas = XLSX.utils.sheet_to_json(ws, { defval: "" });
+        if (!filas.length) throw new Error("vacío");
+
+        const diasValidos = ["lunes","martes","miercoles","jueves","viernes","sabado"];
+        const items = [];
+        let omitidos = 0;
+        filas.forEach(f=>{
+          const cod = String(f["Cod.Cliente"] ?? f["Cod Cliente"] ?? f["Cod.Client"] ?? "").trim();
+          const dia = _normDia(f["Dia"] ?? f["Día"] ?? "");
+          const vendedor = String(f["Vendedor"] ?? "").trim();
+          if (!cod || !vendedor || !diasValidos.includes(dia)){ omitidos++; return; }
+          items.push({
+            cod,
+            nombre: String(f["Nom.Cliente"] ?? f["Nombre"] ?? "").trim(),
+            comercial: String(f["Nom.Comercial"] ?? f["Nombre Comercial"] ?? "").trim(),
+            semana: String(f["Semana"] ?? "").trim(),
+            dia,
+            secuencia: Number(f["Secuencia"] ?? 0) || 0,
+            codVendedor: String(f["Cod.Vendedor"] ?? f["Cod Vendedor"] ?? "").trim(),
+            vendedor
+          });
+        });
+        if (!items.length) throw new Error("sin filas válidas");
+
+        rolVisitas = items;
+        await guardarRol();
+        renderRolHoy();
+        toast(`Rol cargado: ${items.length} visitas${omitidos ? `, ${omitidos} omitidas` : ""}`);
+      }catch(err){
+        console.error(err);
+        toast("No se pudo leer el archivo. Verificá que sea el Excel del rol de visitas.");
+      }
+    };
+    reader.readAsArrayBuffer(file);
+    e.target.value = "";
+  });
+
   /* ===================== RENDER GENERAL ===================== */
   function renderAll(){
     renderPanel();
@@ -1736,6 +2002,7 @@
     renderProductos();
     renderVisitaSelectores();
     renderKardexSelectores();
+    renderRolHoy();
   }
 
   /* ===================== AUTENTICACIÓN (Firebase Auth) ===================== */
@@ -1800,11 +2067,7 @@
     const textoOriginal = submitBtn.textContent;
     submitBtn.textContent = "Un momento…";
     try{
-      if (authMode === "register"){
-        await window.FB.createUserWithEmailAndPassword(window.FB.auth, email, password);
-      } else {
-        await window.FB.signInWithEmailAndPassword(window.FB.auth, email, password);
-      }
+      await window.FB.signInWithEmailAndPassword(window.FB.auth, email, password);
       // onAuthStateChanged se encarga de mostrar la app
     }catch(err){
       console.error(err);
@@ -1818,21 +2081,46 @@
     try{ await window.FB.signOut(window.FB.auth); }catch(e){ /* ignore */ }
   });
 
+  let _pendingAuthMsg = "";
+
   async function mostrarPantallaApp(user){
     currentUid = user.uid;
     currentEmail = user.email;
-    document.getElementById("userEmailLabel").textContent = currentEmail || "";
+
+    // Validar que sea una cuenta del portal y esté activa
+    let perfil = null;
+    try{ perfil = await rget(`portal_users/${user.uid}`); }catch(e){}
+    if (!perfil){
+      _pendingAuthMsg = "Tu cuenta no está registrada en el portal. Pedile al administrador que te dé de alta.";
+      try{ await window.FB.signOut(window.FB.auth); }catch(e){}
+      return;
+    }
+    if (perfil.activo === false){
+      _pendingAuthMsg = "Tu cuenta está desactivada. Contactá al administrador.";
+      try{ await window.FB.signOut(window.FB.auth); }catch(e){}
+      return;
+    }
+
+    document.getElementById("userEmailLabel").textContent = (perfil.nombre || currentEmail || "");
     document.getElementById("authScreen").classList.add("hidden");
     document.getElementById("appScreen").style.display = "";
 
     await loadDB();
+
+    document.body.classList.toggle("ver-todo", puedeVerTodo());
+    document.body.classList.toggle("solo-agente", !puedeVerTodo());
+
     document.getElementById("visFecha").value = todayISO();
     renderAll();
+    activarTab("rol");
   }
 
   function mostrarPantallaLogin(){
     currentUid = null;
     currentEmail = null;
+    currentRol = "agente";
+    miCodigoAgente = "";
+    document.body.classList.remove("ver-todo","solo-agente");
     document.getElementById("appScreen").style.display = "none";
     document.getElementById("authScreen").classList.remove("hidden");
     document.getElementById("authLoading").style.display = "none";
@@ -1840,6 +2128,7 @@
     document.getElementById("authEmail").value = "";
     document.getElementById("authPassword").value = "";
     clearAuthError();
+    if (_pendingAuthMsg){ showAuthError(_pendingAuthMsg); _pendingAuthMsg = ""; }
     const submitBtn = document.getElementById("btnAuthSubmit");
     submitBtn.disabled = false;
     setAuthMode("login");
