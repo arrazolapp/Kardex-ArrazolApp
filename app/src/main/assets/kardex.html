@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Kardex de Clientes · Pedido Sugerido</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import {
@@ -48,11 +49,12 @@
 </script>
 <style>
   :root{
-    --bg:#F4F6F8;
+    --bg:#E4E9F1;
     --surface:#FFFFFF;
     --ink:#1B2333;
     --muted:#6B7585;
     --border:#E1E5EA;
+    --border-blue:#93AACF;
     --primary:#1B2A4A;
     --primary-light:#2D4270;
     --accent:#2E8B6B;
@@ -63,7 +65,7 @@
     --danger-bg:#FBE7E7;
     --gray-bg:#EEF0F3;
     --radius:10px;
-    --shadow:0 1px 2px rgba(27,35,51,0.06), 0 4px 14px rgba(27,35,51,0.05);
+    --shadow:0 1px 2px rgba(27,42,74,0.08), 0 6px 20px rgba(27,42,74,0.10);
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;max-width:100%;overflow-x:hidden;}
@@ -136,7 +138,7 @@
   .stat-card.warning .num{color:var(--warning);}
   .stat-card.accent .num{color:var(--accent);}
 
-  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px;margin-bottom:18px;}
+  .card{background:var(--surface);border:1.5px solid var(--border-blue);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px;margin-bottom:18px;}
   .card h2{font-size:15px;margin:0 0 4px;}
   .card .eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:700;margin:0 0 4px;}
   .card-head{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:14px;}
@@ -146,11 +148,14 @@
   input[type=text],input[type=number],input[type=date],select,textarea{
     width:100%;
     padding:8px 10px;
-    border:1px solid var(--border);
+    border:1.5px solid var(--border-blue);
     border-radius:7px;
     font-size:13.5px;
     background:#fff;
     color:var(--ink);
+  }
+  input[type=text]:focus,input[type=number]:focus,input[type=date]:focus,select:focus,textarea:focus{
+    border-color:var(--primary-light);
   }
   input:focus,select:focus,textarea:focus,button:focus-visible{
     outline:2px solid var(--primary-light);outline-offset:1px;
@@ -363,6 +368,97 @@
   body.ver-todo .admin-only{ display:block; }
   body.ver-todo .admin-only.inline{ display:inline-block; }
   .oculto-siempre{ display:none !important; }
+
+  /* ---- Rol de hoy: banner, layout árbol + detalle ---- */
+  .rol-banner{
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    background:var(--accent-bg); border:1px solid var(--accent);
+    color:var(--primary); border-radius:10px; padding:10px 14px;
+    font-size:13.5px; margin-bottom:12px;
+  }
+  .rol-banner b{ color:var(--accent); }
+  .rol-banner .chip-hoy{
+    background:var(--accent); color:#fff; border-radius:999px;
+    padding:2px 10px; font-size:12px; font-weight:700;
+  }
+  .rol-vend-row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .rol-vend-row label{ font-size:12px; color:var(--muted); font-weight:600; }
+  .rol-vend-fijo{ font-weight:700; color:var(--primary); font-size:15px; }
+
+  .rol-layout{ display:grid; grid-template-columns:230px 1fr; gap:14px; align-items:start; }
+  @media (max-width:760px){ .rol-layout{ grid-template-columns:1fr; } }
+
+  .rol-tree{ padding:12px; }
+  .rol-sem{ margin-bottom:6px; }
+  .rol-sem-head{
+    display:flex; align-items:center; gap:8px; cursor:pointer;
+    font-weight:700; color:var(--primary); padding:6px 4px; user-select:none;
+    border-radius:8px;
+  }
+  .rol-sem-head:hover{ background:var(--bg); }
+  .rol-sem-head .caret{ transition:transform .15s; font-size:11px; color:var(--muted); }
+  .rol-sem.colapsada .caret{ transform:rotate(-90deg); }
+  .rol-sem.colapsada .rol-dias{ display:none; }
+  .rol-dia{
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+    padding:7px 10px; margin:3px 0 3px 14px; border-radius:8px; cursor:pointer;
+    font-size:13.5px; color:var(--ink); border:1px solid transparent;
+  }
+  .rol-dia:hover{ background:var(--bg); }
+  .rol-dia.sel{ background:var(--primary); color:#fff; }
+  .rol-dia.sel .rol-count{ background:rgba(255,255,255,0.25); color:#fff; }
+  .rol-dia .rol-count{
+    background:var(--bg); color:var(--muted); border-radius:999px;
+    padding:1px 8px; font-size:11px; font-weight:700; min-width:22px; text-align:center;
+  }
+  .rol-dot{ width:9px; height:9px; border-radius:50%; background:var(--border); flex:0 0 auto; }
+  .rol-dot.hoy{ background:var(--accent); box-shadow:0 0 0 3px var(--accent-bg); }
+  .rol-dia.es-hoy{ color:var(--accent); font-weight:700; }
+  .rol-dia.es-hoy.sel{ color:#fff; }
+  .rol-sem-head.es-hoy{ color:var(--accent); }
+  tr.fila-hoy td{ background:var(--accent-bg); }
+
+  /* ---- Pedido: encabezado compacto ---- */
+  .pedido-head{ display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap; }
+  .pedido-head-info{ flex:0 0 auto; }
+  .pedido-head-mid{ flex:1 1 auto; text-align:center; min-width:160px; }
+  .pedido-head-mid b{ color:var(--ink); }
+  .pedido-head-actions{ display:flex; align-items:center; gap:10px; flex:0 0 auto; }
+  .fecha-mini{ max-width:170px; padding:7px 10px; font-size:13px; border:1.5px solid var(--border-blue); border-radius:8px; color:var(--ink); background:var(--surface); }
+  .btn-volver{ display:inline-flex; align-items:center; gap:6px; background:var(--accent); color:#fff;
+    border:none; border-radius:9px; padding:9px 16px; font-family:'Exo 2',sans-serif; font-size:13.5px; font-weight:700;
+    cursor:pointer; box-shadow:0 2px 8px rgba(46,139,107,0.35); transition:background .15s, transform .1s; }
+  .btn-volver:hover{ background:#25755a; }
+  .btn-volver:active{ transform:translateY(1px); }
+  .btn-volver .flecha{ font-size:19px; line-height:1; font-weight:800; }
+  #visSubinfo b{ color:var(--ink); }
+
+  /* ---- Buscador de productos ---- */
+  .prod-search-wrap{ position:relative; display:flex; gap:10px; margin-top:20px; margin-bottom:14px; }
+  .prod-search{ flex:1; padding:13px 15px; border:2px solid var(--primary-light); border-radius:11px; font-size:14px; outline:none; color:var(--ink); background:var(--surface); }
+  .prod-search:focus{ border-color:var(--primary); box-shadow:0 0 0 3px rgba(45,66,112,0.18); }
+  .prod-scan-btn{ flex:0 0 auto; width:54px; display:flex; align-items:center; justify-content:center;
+    border:none; border-radius:11px; background:var(--primary); color:#fff; cursor:pointer;
+    box-shadow:0 2px 8px rgba(27,42,74,0.30); transition:background .15s, transform .1s; }
+  .prod-scan-btn:hover{ background:var(--primary-light); }
+  .prod-scan-btn:active{ transform:translateY(1px); }
+  .prod-results{ position:absolute; top:calc(100% + 4px); left:0; right:64px; background:var(--surface);
+    border:2px solid var(--primary-light); border-radius:11px; box-shadow:0 10px 28px rgba(27,42,74,0.18);
+    max-height:300px; overflow:auto; z-index:60; display:none; }
+  .prod-results.show{ display:block; }
+  .prod-result{ padding:10px 14px; cursor:pointer; border-bottom:1px solid var(--border); font-size:13.5px; color:var(--ink); }
+  .prod-result:last-child{ border-bottom:none; }
+  .prod-result:hover{ background:var(--accent-bg); }
+  .prod-result .cod{ color:var(--muted); font-size:12px; }
+  .prod-results .prod-empty{ padding:12px 14px; color:var(--muted); font-size:13px; }
+
+  /* ---- Overlay del escáner ---- */
+  .scan-overlay{ position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:1000; display:none;
+    flex-direction:column; align-items:center; justify-content:center; padding:18px; }
+  .scan-overlay.show{ display:flex; }
+  .scan-box{ width:100%; max-width:440px; background:var(--surface); border-radius:14px; overflow:hidden; }
+  .scan-head{ display:flex; justify-content:space-between; align-items:center; padding:12px 16px; border-bottom:1px solid var(--border); }
+  #reader{ width:100%; }
 </style>
 </head>
 <body>
@@ -426,8 +522,6 @@
 
 <nav class="tabs">
   <button data-tab="rol" class="active">Rol de hoy</button>
-  <button data-tab="panel">Panel de ruta</button>
-  <button data-tab="visita">Registrar visita</button>
   <button data-tab="clientes">Clientes</button>
   <button data-tab="productos">Productos</button>
   <button data-tab="kardex">Kardex / Historial</button>
@@ -439,36 +533,21 @@
   <section id="tab-rol" class="tab-panel active">
     <div class="card">
       <p class="eyebrow">Rol de visitas</p>
-      <h2 style="margin-bottom:4px;">Clientes a visitar</h2>
-      <p style="font-size:13px;color:var(--muted);margin:0 0 14px;">
-        Elegí tu nombre, la semana y el día. La lista sale en el orden de visita. Tocá «Registrar visita» para ir directo al pedido.
-      </p>
-      <div class="form-row" style="margin-top:4px;">
-        <div>
-          <label for="rolVendedor">Vendedor</label>
-          <select id="rolVendedor"></select>
-        </div>
-        <div>
-          <label for="rolSemana">Semana</label>
-          <select id="rolSemana"></select>
-        </div>
-        <div>
-          <label for="rolDia">Día</label>
-          <select id="rolDia">
-            <option value="lunes">Lunes</option>
-            <option value="martes">Martes</option>
-            <option value="miercoles">Miércoles</option>
-            <option value="jueves">Jueves</option>
-            <option value="viernes">Viernes</option>
-            <option value="sabado">Sábado</option>
-          </select>
-        </div>
+      <h2 style="margin-bottom:10px;">Clientes a visitar</h2>
+      <div id="rolHoyBanner" class="rol-banner"></div>
+      <div class="rol-vend-row">
+        <label class="admin-only inline" for="rolVendedor">Vendedor</label>
+        <select id="rolVendedor" class="admin-only inline"></select>
+        <span id="rolVendedorFijo" class="rol-vend-fijo"></span>
       </div>
     </div>
 
-    <div class="card">
-      <h2 id="rolListaTitulo" style="margin-bottom:14px;">Ruta del día</h2>
-      <div class="table-wrap" id="rolTableWrap"></div>
+    <div class="rol-layout">
+      <aside class="card rol-tree" id="rolTree"></aside>
+      <div class="card rol-detail">
+        <h2 id="rolListaTitulo" style="margin-bottom:14px;">Ruta del día</h2>
+        <div class="table-wrap" id="rolTableWrap"></div>
+      </div>
     </div>
 
     <div class="card admin-only">
@@ -505,19 +584,20 @@
   <!-- ===================== REGISTRAR VISITA ===================== -->
   <section id="tab-visita" class="tab-panel">
     <div class="card">
-      <p class="eyebrow">Toma de pedido</p>
-      <h2>Registrar visita</h2>
-      <div class="form-row" style="margin-top:14px;">
-        <div>
-          <label for="visCliente">Cliente</label>
-          <select id="visCliente"></select>
+      <div class="pedido-head">
+        <div class="pedido-head-info">
+          <p class="eyebrow" style="margin:0;">Toma de pedido</p>
+          <h2 id="visTitulo" style="margin:2px 0 0;">Registrar visita</h2>
         </div>
-        <div>
-          <label for="visFecha">Fecha de la visita</label>
-          <input type="date" id="visFecha">
+        <div class="pedido-head-mid muted small" id="visSubinfo"></div>
+        <div class="pedido-head-actions">
+          <input type="date" id="visFecha" class="fecha-mini" aria-label="Fecha de la visita">
+          <button class="btn-volver" id="btnVolverRol"><span class="flecha" aria-hidden="true">←</span> Volver</button>
         </div>
       </div>
-      <div id="visClienteInfo"></div>
+      <div style="display:none;">
+        <select id="visCliente"></select>
+      </div>
 
       <div id="visSinCliente" class="empty" style="display:none;">
         <strong>Selecciona un cliente para empezar</strong>
@@ -525,12 +605,25 @@
       </div>
 
       <div id="visContenido" style="display:none;">
-        <div class="row-flex" style="margin-bottom:12px;">
-          <div style="flex:1;min-width:200px;">
-            <label for="visAgregarProducto">Agregar producto a esta visita</label>
-            <select id="visAgregarProducto"></select>
-          </div>
-          <button class="btn btn-ghost" id="btnAgregarProducto">+ Agregar producto</button>
+        <div class="prod-search-wrap">
+          <input type="text" id="prodSearch" class="prod-search" placeholder="Buscar producto por nombre o código…" autocomplete="off">
+          <button class="prod-scan-btn" id="btnScan" title="Escanear código de barras" aria-label="Escanear">
+            <svg viewBox="0 0 24 24" width="24" height="24">
+              <g fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 8V5.5A2.5 2.5 0 0 1 5.5 3H8"/>
+                <path d="M16 3h2.5A2.5 2.5 0 0 1 21 5.5V8"/>
+                <path d="M21 16v2.5a2.5 2.5 0 0 1-2.5 2.5H16"/>
+                <path d="M8 21H5.5A2.5 2.5 0 0 1 3 18.5V16"/>
+              </g>
+              <g fill="currentColor">
+                <rect x="6.8" y="8" width="1.2" height="8" rx="0.4"/>
+                <rect x="9.4" y="8" width="2" height="8" rx="0.4"/>
+                <rect x="12.4" y="8" width="1.2" height="8" rx="0.4"/>
+                <rect x="15" y="8" width="2" height="8" rx="0.4"/>
+              </g>
+            </svg>
+          </button>
+          <div class="prod-results" id="prodResults"></div>
         </div>
 
         <div class="table-wrap">
@@ -538,10 +631,8 @@
             <thead>
               <tr>
                 <th>Producto</th>
-                <th>Entregado anterior</th>
-                <th>Días desde la visita anterior</th>
-                <th>Inventario encontrado hoy</th>
-                <th>Consumo real</th>
+                <th>Vendido anterior</th>
+                <th>Inventario hoy</th>
                 <th>Pedido sugerido</th>
                 <th>Pedido a registrar</th>
                 <th></th>
@@ -552,7 +643,6 @@
         </div>
         <div id="visTablaEmpty" class="empty" style="display:none;">
           <strong>Aún no has agregado productos</strong>
-          Usa el selector de arriba para agregar los productos que maneja este cliente.
         </div>
 
         <div class="form-row" style="margin-top:14px;">
@@ -569,6 +659,18 @@
       </div>
     </div>
   </section>
+
+  <!-- ===================== ESCÁNER CÓDIGO DE BARRAS ===================== -->
+  <div class="scan-overlay" id="scanOverlay">
+    <div class="scan-box">
+      <div class="scan-head">
+        <b>Escanear código de barras</b>
+        <button class="btn btn-ghost btn-sm" id="btnCerrarScan">Cerrar</button>
+      </div>
+      <div id="reader"></div>
+      <div class="muted small" id="scanMsg" style="padding:12px 16px;">Apuntá la cámara al código de barras del producto…</div>
+    </div>
+  </div>
 
   <!-- ===================== CLIENTES ===================== -->
   <section id="tab-clientes" class="tab-panel">
@@ -1014,41 +1116,41 @@
     return Number(cliente.frecuenciaDias) || 15;
   }
 
-  // Calcula sugerido para un producto dado, en el contexto de una fecha de visita e inventario encontrado
-  // Devuelve null en los campos que no se pueden calcular (primera vez)
+  // Pedido sugerido por ROTACIÓN:
+  //   · Se vendió V la vez pasada. Hoy hay I en inventario físico.
+  //   · Si I > 0  → sugerido = V - I  (repone lo consumido)
+  //   · Si I = 0  → sugerido = V + 12% (se agotó: repone y crece un poco)
+  //   · Si aún no se contó el inventario → sugerido = null (hay que contar primero)
   function calcularSugerido(clienteId, productoId, fechaVisita, inventarioEncontrado, cliente){
-    const hist = historialClienteProducto(clienteId, productoId)
-      .filter(h => h.visita.fecha < fechaVisita || (h.visita.fecha === fechaVisita)); // se filtra por anterior en getRows
-    // Tomamos la visita anterior más reciente ANTES de fechaVisita
     const anteriores = historialClienteProducto(clienteId, productoId).filter(h => h.visita.fecha < fechaVisita);
     const previa = anteriores.length ? anteriores[anteriores.length - 1] : null;
 
     if (!previa){
-      return {
-        primeraVez: true,
-        entregadoAnterior: null,
-        diasTranscurridos: null,
-        consumo: null,
-        sugerido: null
-      };
+      return { primeraVez:true, entregadoAnterior:null, diasTranscurridos:null, consumo:null, sugerido:null };
     }
 
-    const entregadoAnterior = Number(previa.item.cantidadEntregada) || 0;
+    const V = Number(previa.item.cantidadEntregada) || 0;
     const dias = Math.max(1, diffDays(previa.visita.fecha, fechaVisita));
+
+    const noContado = (inventarioEncontrado === "" || inventarioEncontrado === null || inventarioEncontrado === undefined);
+    if (noContado){
+      return { primeraVez:false, entregadoAnterior:V, diasTranscurridos:dias, consumo:null, sugerido:null };
+    }
+
     const inv = Number(inventarioEncontrado);
-    const invValido = !isNaN(inv) ? inv : 0;
-    let consumo = entregadoAnterior - invValido; // puede ser negativo (sobre-stock)
-    const consumoParaProyeccion = Math.max(0, consumo);
-    const consumoDiario = consumoParaProyeccion / dias;
-    const frecuencia = clienteFrecuenciaDias(cliente);
-    const proyeccion = consumoDiario * frecuencia;
-    const sugerido = Math.max(0, Math.ceil(proyeccion - invValido));
+    const I = (!isNaN(inv) && inv >= 0) ? inv : 0;
+    let sugerido;
+    if (I <= 0){
+      sugerido = Math.round(V * 1.12);   // agotado → repone + 12%
+    } else {
+      sugerido = Math.max(0, V - I);     // repone lo consumido
+    }
 
     return {
-      primeraVez: false,
-      entregadoAnterior,
-      diasTranscurridos: dias,
-      consumo,
+      primeraVez:false,
+      entregadoAnterior:V,
+      diasTranscurridos:dias,
+      consumo: V - I,
       sugerido
     };
   }
@@ -1420,7 +1522,7 @@
     if (!clienteId){
       sinCliente.style.display = "block";
       contenido.style.display = "none";
-      document.getElementById("visClienteInfo").innerHTML = "";
+      document.getElementById("visSubinfo").textContent = "";
       return;
     }
     sinCliente.style.display = "none";
@@ -1428,39 +1530,126 @@
 
     const cliente = db.clientes.find(c=>c.id===clienteId);
     const est = estadoCliente(cliente);
-    document.getElementById("visClienteInfo").innerHTML = `
-      <div class="pill-info">
-        <div><span>Frecuencia</span><b>${frecuenciaLabel(clienteFrecuenciaDias(cliente))}</b></div>
-        <div><span>Última visita</span><b>${est.ultimaFecha ? formatFecha(est.ultimaFecha) : "Sin registros"}</b></div>
-        <div><span>Próxima visita sugerida</span><b>${est.proximaFecha ? formatFecha(est.proximaFecha) : "—"}</b></div>
-        ${cliente.vendedor ? `<div><span>Vendedor</span><b>${esc(cliente.vendedor)}</b></div>` : ""}
-      </div>
-    `;
+    const nom = cliente ? (cliente.nombreFantasia || cliente.razonSocial || "") : "";
+    const tituloEl = document.getElementById("visTitulo");
+    if (tituloEl) tituloEl.textContent = nom || "Registrar visita";
+    const partes = [];
+    if (cliente && cliente.codCliente) partes.push(`Código <b>${esc(cliente.codCliente)}</b>`);
+    partes.push(`Última visita <b>${est.ultimaFecha ? formatFecha(est.ultimaFecha) : "Sin registros"}</b>`);
+    document.getElementById("visSubinfo").innerHTML = partes.join(" · ");
 
-    renderSelectorAgregarProducto();
+    // Precargar los productos que este cliente ya maneja (según su historial)
+    const previos = [...new Set(
+      db.visitas.filter(v=> v.clienteId === clienteId)
+        .flatMap(v=> (v.items||[]).map(it=> it.productoId))
+    )];
+    previos.forEach(pid=>{
+      if (db.productos.find(p=>p.id===pid)) visitaDraftItems.push({ productoId: pid, inventarioEncontrado: "", pedidoFinal: "" });
+    });
+
+    renderTablaVisita();
+    const ps = document.getElementById("prodSearch");
+    if (ps) ps.value = "";
+    const pr = document.getElementById("prodResults");
+    if (pr) pr.classList.remove("show");
+  }
+
+  /* ---- Buscador de productos (nombre / código / código de barras) ---- */
+  function filtrarProductos(q){
+    q = (q||"").trim().toLowerCase();
+    if (!q) return [];
+    const ya = new Set(visitaDraftItems.map(i=>i.productoId));
+    return db.productos.filter(p=>{
+      if (ya.has(p.id)) return false;
+      return (p.nombre||"").toLowerCase().includes(q)
+          || (p.codigo||"").toLowerCase().includes(q)
+          || (p.codigoBarra||"").toLowerCase().includes(q);
+    }).slice(0, 40);
+  }
+
+  function renderResultadosProd(){
+    const box = document.getElementById("prodResults");
+    if (!box) return;
+    const q = document.getElementById("prodSearch").value;
+    if (!q.trim()){ box.classList.remove("show"); box.innerHTML = ""; return; }
+    const res = filtrarProductos(q);
+    if (!res.length){
+      box.innerHTML = `<div class="prod-empty">Sin coincidencias para "${esc(q)}"</div>`;
+      box.classList.add("show");
+      return;
+    }
+    box.innerHTML = res.map(p=>`<div class="prod-result" data-add="${p.id}">
+      <b>${esc(p.nombre)}</b>${p.unidad ? ` <span class="cod">(${esc(p.unidad)})</span>` : ""}
+      <div class="cod">${p.codigo ? esc(p.codigo) : ""}${p.codigoBarra ? " · " + esc(p.codigoBarra) : ""}</div>
+    </div>`).join("");
+    box.classList.add("show");
+    box.querySelectorAll("[data-add]").forEach(el=> el.addEventListener("click", ()=> agregarProductoAVisita(el.dataset.add)));
+  }
+
+  function agregarProductoAVisita(pid){
+    if (!pid) return;
+    if (visitaDraftItems.some(i=>i.productoId===pid)){ toast("Ese producto ya está en la lista"); return; }
+    visitaDraftItems.push({ productoId: pid, inventarioEncontrado: "", pedidoFinal: "" });
+    const ps = document.getElementById("prodSearch");
+    if (ps){ ps.value = ""; ps.focus(); }
+    document.getElementById("prodResults").classList.remove("show");
     renderTablaVisita();
   }
 
-  function renderSelectorAgregarProducto(){
-    const sel = document.getElementById("visAgregarProducto");
-    const yaAgregados = new Set(visitaDraftItems.map(i=>i.productoId));
-    const disponibles = db.productos.filter(p=> !yaAgregados.has(p.id));
-    if (!disponibles.length){
-      sel.innerHTML = `<option value="">No hay más productos para agregar</option>`;
-      document.getElementById("btnAgregarProducto").disabled = true;
-    } else {
-      sel.innerHTML = disponibles.map(p=>`<option value="${p.id}">${p.codigo ? "["+esc(p.codigo)+"] " : ""}${esc(p.nombre)}${p.unidad ? " ("+esc(p.unidad)+")":""}</option>`).join("");
-      document.getElementById("btnAgregarProducto").disabled = false;
+  const _prodSearch = document.getElementById("prodSearch");
+  if (_prodSearch){
+    _prodSearch.addEventListener("input", renderResultadosProd);
+    _prodSearch.addEventListener("focus", renderResultadosProd);
+  }
+  document.addEventListener("click", (e)=>{
+    const wrap = document.querySelector(".prod-search-wrap");
+    const box = document.getElementById("prodResults");
+    if (wrap && box && !wrap.contains(e.target)) box.classList.remove("show");
+  });
+
+  /* ---- Escáner de código de barras ---- */
+  let _scanner = null;
+  async function abrirScanner(){
+    const ov = document.getElementById("scanOverlay");
+    const msg = document.getElementById("scanMsg");
+    ov.classList.add("show");
+    msg.textContent = "Apuntá la cámara al código de barras del producto…";
+    if (typeof Html5Qrcode === "undefined"){
+      msg.textContent = "No se pudo cargar el lector. Revisá tu conexión a internet.";
+      return;
+    }
+    try{
+      _scanner = new Html5Qrcode("reader");
+      await _scanner.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 280, height: 170 } },
+        (texto)=> onCodigoEscaneado(texto),
+        ()=>{}
+      );
+    }catch(e){
+      console.error(e);
+      msg.textContent = "No se pudo abrir la cámara. Revisá los permisos de cámara del navegador o la app.";
     }
   }
-
-  document.getElementById("btnAgregarProducto").addEventListener("click", ()=>{
-    const sel = document.getElementById("visAgregarProducto");
-    if (!sel.value) return;
-    visitaDraftItems.push({ productoId: sel.value, inventarioEncontrado: "", pedidoFinal: "" });
-    renderSelectorAgregarProducto();
-    renderTablaVisita();
-  });
+  async function cerrarScanner(){
+    const ov = document.getElementById("scanOverlay");
+    if (ov) ov.classList.remove("show");
+    if (_scanner){
+      try{ await _scanner.stop(); await _scanner.clear(); }catch(e){}
+      _scanner = null;
+    }
+  }
+  function onCodigoEscaneado(texto){
+    const code = String(texto||"").trim();
+    const prod = db.productos.find(p=> (p.codigoBarra||"").trim() === code);
+    cerrarScanner();
+    if (prod){ agregarProductoAVisita(prod.id); toast("Producto agregado: " + prod.nombre); }
+    else { toast(`Código ${code} sin producto asociado`); }
+  }
+  const _btnScan = document.getElementById("btnScan");
+  if (_btnScan) _btnScan.addEventListener("click", abrirScanner);
+  const _btnCerrarScan = document.getElementById("btnCerrarScan");
+  if (_btnCerrarScan) _btnCerrarScan.addEventListener("click", cerrarScanner);
 
   function renderTablaVisita(){
     const body = document.getElementById("visTablaBody");
@@ -1482,16 +1671,13 @@
       if (item.pedidoFinal === "" && calc.sugerido !== null){
         item.pedidoFinal = String(calc.sugerido);
       }
-      const consumoTxt = calc.consumo === null ? "—" : (calc.consumo < 0 ? `<span class="muted">${calc.consumo} (sobre-stock)</span>` : calc.consumo);
 
       return `
         <tr data-row="${idx}">
           <td data-label="Producto"><b>${esc(producto ? producto.nombre : "—")}</b>${producto && producto.unidad ? `<div class="muted small">${esc(producto.unidad)}</div>`:""}</td>
-          <td data-label="Entregado anterior">${calc.primeraVez ? `<span class="badge neutral">Primera vez</span>` : calc.entregadoAnterior}</td>
-          <td data-label="Días desde visita anterior">${calc.primeraVez ? "—" : calc.diasTranscurridos + " días"}</td>
-          <td data-label="Inventario encontrado hoy"><input type="number" min="0" step="1" class="inv-input" data-idx="${idx}" value="${item.inventarioEncontrado}" placeholder="0" style="max-width:90px;"></td>
-          <td data-label="Consumo real">${consumoTxt}</td>
-          <td data-label="Pedido sugerido">${calc.sugerido === null ? `<span class="muted small">Sin datos previos</span>` : `<b>${calc.sugerido}</b>`}</td>
+          <td data-label="Vendido anterior">${calc.primeraVez ? `<span class="badge neutral">Primera vez</span>` : `<b>${calc.entregadoAnterior}</b>`}</td>
+          <td data-label="Inventario hoy"><input type="number" min="0" step="1" class="inv-input" data-idx="${idx}" value="${item.inventarioEncontrado}" placeholder="contar" style="max-width:90px;"></td>
+          <td data-label="Pedido sugerido">${calc.sugerido === null ? `<span class="muted small">${calc.primeraVez ? "Sin dato previo" : "Contá inventario"}</span>` : `<b style="color:var(--accent);font-size:15px;">${calc.sugerido}</b>`}</td>
           <td data-label="Pedido a registrar"><input type="number" min="0" step="1" class="pedido-input" data-idx="${idx}" value="${item.pedidoFinal}" placeholder="0" style="max-width:90px;"></td>
           <td data-label=""><button class="btn btn-sm btn-ghost" data-quitar="${idx}">Quitar</button></td>
         </tr>
@@ -1515,7 +1701,6 @@
     body.querySelectorAll("[data-quitar]").forEach(btn=>{
       btn.addEventListener("click", ()=>{
         visitaDraftItems.splice(Number(btn.dataset.quitar), 1);
-        renderSelectorAgregarProducto();
         renderTablaVisita();
       });
     });
@@ -1523,11 +1708,17 @@
 
   function recalcularFilasVisita(){ renderTablaVisita(); }
 
-  document.getElementById("btnCancelarVisita").addEventListener("click", ()=>{
+  function volverAlRol(){
     visitaDraftItems = [];
+    document.getElementById("visNotas").value = "";
     document.getElementById("visCliente").value = "";
     onVisitaClienteChange();
-  });
+    activarTab("rol");
+    renderRolHoy();
+  }
+
+  document.getElementById("btnVolverRol").addEventListener("click", volverAlRol);
+  document.getElementById("btnCancelarVisita").addEventListener("click", volverAlRol);
 
   document.getElementById("btnGuardarVisita").addEventListener("click", async ()=>{
     const clienteId = document.getElementById("visCliente").value;
@@ -1560,11 +1751,7 @@
 
     await saveDB();
     toast("Visita registrada — pedido guardado en el kardex");
-    visitaDraftItems = [];
-    document.getElementById("visNotas").value = "";
-    document.getElementById("visCliente").value = "";
-    onVisitaClienteChange();
-    renderAll();
+    volverAlRol();
   });
 
   /* ===================== RENDER: KARDEX ===================== */
@@ -1829,86 +2016,156 @@
   });
 
   /* ===================== ROL DE VISITAS ===================== */
-  const DIAS_SEMANA = ["domingo","lunes","martes","miercoles","jueves","viernes","sabado"];
-  const _normDia = (s)=> String(s||"").trim().toLowerCase()
-    .normalize("NFD").replace(/[\u0300-\u036f]/g,""); // quita acentos: miércoles -> miercoles
+  const DIAS_ORDEN = ["lunes","martes","miercoles","jueves","viernes","sabado"];
+  const DIA_LABEL = { lunes:"Lunes", martes:"Martes", miercoles:"Miércoles", jueves:"Jueves", viernes:"Viernes", sabado:"Sábado" };
+  const DIAS_JS = ["domingo","lunes","martes","miercoles","jueves","viernes","sabado"];
+  const _normDia = (s)=> String(s||"").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
 
+  // Número de semana ISO del año
+  function isoWeek(d){
+    const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    const dayNum = (t.getUTCDay() + 6) % 7;      // lunes=0
+    t.setUTCDate(t.getUTCDate() - dayNum + 3);    // jueves de esa semana
+    const firstThu = new Date(Date.UTC(t.getUTCFullYear(), 0, 4));
+    const firstDayNum = (firstThu.getUTCDay() + 6) % 7;
+    firstThu.setUTCDate(firstThu.getUTCDate() - firstDayNum + 3);
+    return 1 + Math.round((t - firstThu) / (7*24*3600*1000));
+  }
+  function semanaDelAnio(){ return isoWeek(new Date()); }
+  // Impar → Sem 1 ; Par → Sem 2
+  function semanaActualLabel(){ return (semanaDelAnio() % 2 === 1) ? "Sem 1" : "Sem 2"; }
   function diaHoy(){
-    const d = DIAS_SEMANA[new Date().getDay()];
-    return (d === "domingo") ? "lunes" : d; // domingo no tiene ruta: cae en lunes
+    const d = DIAS_JS[new Date().getDay()];
+    return (d === "domingo") ? "lunes" : d;   // domingo no tiene ruta
   }
 
-  // Llena los selectores de vendedor y semana según el rol cargado
+  // Estado de navegación del árbol
+  let rolSemSel = null, rolDiaSel = null;
+  let rolSemColapsadas = {};
+
+  function codigoVendedorActivo(){
+    const selV = document.getElementById("rolVendedor");
+    if (puedeVerTodo()) return selV ? selV.value : "";
+    return miCodigoAgente;
+  }
+
+  // Selector de vendedor (admin) / etiqueta fija (vendedor)
   function poblarSelectoresRol(){
     const selV = document.getElementById("rolVendedor");
-    const selS = document.getElementById("rolSemana");
-    const selD = document.getElementById("rolDia");
-    if (!selV || !selS || !selD) return;
-
-    // Vendedores del rol por CÓDIGO (codVendedor); etiqueta = nombre
+    const fijo = document.getElementById("rolVendedorFijo");
+    if (!selV) return;
     const mapaVend = new Map();
     rolVisitas.forEach(r=>{
       const code = (r.codVendedor||"").trim();
       if (code && !mapaVend.has(code)) mapaVend.set(code, (r.vendedor||code).trim());
     });
     const codigos = [...mapaVend.keys()].sort((a,b)=>a.localeCompare(b));
-
-    const semanas = [...new Set(rolVisitas.map(r=> (r.semana||"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
-    const prevS = localStorage.getItem("rol_semana") || selS.value;
-    selS.innerHTML = semanas.length ? semanas.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join("") : `<option value="">—</option>`;
-    if (prevS && semanas.includes(prevS)) selS.value = prevS;
-
     if (puedeVerTodo()){
-      selV.disabled = false;
       const prevV = localStorage.getItem("rol_vendedor") || selV.value;
       selV.innerHTML = `<option value="">— elegí un vendedor —</option>` +
         codigos.map(c=>`<option value="${esc(c)}">${esc(mapaVend.get(c))} (${esc(c)})</option>`).join("");
       if (prevV && codigos.includes(prevV)) selV.value = prevV;
+      if (fijo) fijo.textContent = "";
     } else {
-      // Vendedor: bloqueado a su propio código de agente
-      selV.disabled = true;
-      const nombre = mapaVend.get(miCodigoAgente) || miNombre || "";
-      selV.innerHTML = `<option value="${esc(miCodigoAgente)}">${esc(nombre || miCodigoAgente || "—")}</option>`;
-      selV.value = miCodigoAgente;
+      if (fijo) fijo.textContent = mapaVend.get(miCodigoAgente) || miNombre || miCodigoAgente || "—";
     }
-    if (!selD.value) selD.value = diaHoy();
+  }
+
+  function renderRolBanner(){
+    const b = document.getElementById("rolHoyBanner");
+    if (!b) return;
+    const wk = semanaDelAnio();
+    b.innerHTML = `<span class="chip-hoy">HOY</span> ${DIA_LABEL[diaHoy()]} · Semana <b>${wk}</b> del año → <b>${semanaActualLabel()}</b>`;
   }
 
   function renderRolHoy(){
     poblarSelectoresRol();
-    const selV = document.getElementById("rolVendedor");
-    const selS = document.getElementById("rolSemana");
-    const selD = document.getElementById("rolDia");
+    renderRolBanner();
+    const tree = document.getElementById("rolTree");
     const wrap = document.getElementById("rolTableWrap");
     const titulo = document.getElementById("rolListaTitulo");
-    if (!wrap) return;
+    if (!wrap || !tree) return;
 
     if (!rolVisitas.length){
+      tree.innerHTML = "";
       wrap.innerHTML = `<div class="empty"><strong>Todavía no hay rol cargado</strong>El administrador debe importar el rol de visitas desde Excel.</div>`;
       return;
     }
-
     if (!puedeVerTodo() && !miCodigoAgente){
+      tree.innerHTML = "";
       wrap.innerHTML = `<div class="empty"><strong>Tu usuario no tiene código de agente</strong>Pedile al administrador que te asigne tu código en Gestión de Usuarios del portal.</div>`;
       return;
     }
 
-    const code = selV.value, sem = selS.value, dia = selD.value;
-    const rVend = rolVisitas.find(x=>(x.codVendedor||"").trim()===code);
-    const nombreVend = rVend ? (rVend.vendedor||code) : code;
-    if (titulo) titulo.textContent = code ? `Ruta de ${nombreVend} — ${sem}, ${dia}` : "Ruta del día";
-
+    const code = codigoVendedorActivo();
     if (!code){
-      wrap.innerHTML = `<div class="empty"><strong>Elegí un vendedor</strong>Seleccioná el vendedor arriba para ver la ruta del día.</div>`;
+      tree.innerHTML = "";
+      wrap.innerHTML = `<div class="empty"><strong>Elegí un vendedor</strong>Seleccioná el vendedor arriba para ver su rol.</div>`;
       return;
     }
 
-    const filas = rolVisitas
-      .filter(r => (r.codVendedor||"").trim() === code && (r.semana||"").trim() === sem && _normDia(r.dia) === _normDia(dia))
-      .sort((a,b)=> (Number(a.secuencia)||0) - (Number(b.secuencia)||0));
+    // Agrupar filas del vendedor: semana -> dia -> filas
+    const propias = rolVisitas.filter(r => (r.codVendedor||"").trim() === code);
+    const grupos = {};
+    propias.forEach(r=>{
+      const s = (r.semana||"").trim() || "—";
+      const d = _normDia(r.dia);
+      if (!DIAS_ORDEN.includes(d)) return;
+      (grupos[s] = grupos[s] || {});
+      (grupos[s][d] = grupos[s][d] || []).push(r);
+    });
+    const semanas = Object.keys(grupos).sort((a,b)=>a.localeCompare(b));
+    const semHoy = semanaActualLabel();
+    const diaH = diaHoy();
+
+    // Selección por defecto: hoy si existe; si no, primer disponible
+    if (rolSemSel === null || !grupos[rolSemSel] || !grupos[rolSemSel][rolDiaSel]){
+      if (grupos[semHoy] && grupos[semHoy][diaH]){ rolSemSel = semHoy; rolDiaSel = diaH; }
+      else {
+        const s0 = semanas[0];
+        const d0 = s0 ? DIAS_ORDEN.find(d=> grupos[s0][d]) : null;
+        rolSemSel = s0 || null; rolDiaSel = d0 || null;
+      }
+    }
+
+    // Árbol semana → día
+    tree.innerHTML = semanas.map(s=>{
+      const colap = !!rolSemColapsadas[s];
+      const dias = DIAS_ORDEN.filter(d=> grupos[s][d]);
+      const esSemHoy = (s === semHoy);
+      const diasHtml = dias.map(d=>{
+        const esHoy = (s === semHoy && d === diaH);
+        const sel = (s === rolSemSel && d === rolDiaSel);
+        return `<div class="rol-dia ${sel?'sel':''} ${esHoy?'es-hoy':''}" data-sem="${esc(s)}" data-dia="${esc(d)}">
+          <span style="display:flex;align-items:center;gap:8px;"><span class="rol-dot ${esHoy?'hoy':''}"></span>${DIA_LABEL[d]}</span>
+          <span class="rol-count">${grupos[s][d].length}</span>
+        </div>`;
+      }).join("");
+      return `<div class="rol-sem ${colap?'colapsada':''}">
+        <div class="rol-sem-head ${esSemHoy?'es-hoy':''}" data-sem-head="${esc(s)}">
+          <span class="caret">▼</span> ${esc(s)} ${esSemHoy?'<span class="rol-dot hoy" style="margin-left:auto"></span>':''}
+        </div>
+        <div class="rol-dias">${diasHtml}</div>
+      </div>`;
+    }).join("");
+
+    tree.querySelectorAll("[data-sem-head]").forEach(h=> h.addEventListener("click", ()=>{
+      const s = h.dataset.semHead; rolSemColapsadas[s] = !rolSemColapsadas[s]; renderRolHoy();
+    }));
+    tree.querySelectorAll("[data-dia]").forEach(el=> el.addEventListener("click", ()=>{
+      rolSemSel = el.dataset.sem; rolDiaSel = el.dataset.dia; renderRolHoy();
+    }));
+
+    // Detalle
+    const nombreVend = propias[0] ? (propias[0].vendedor||code) : code;
+    const esHoySel = (rolSemSel === semHoy && rolDiaSel === diaH);
+    if (titulo) titulo.innerHTML = `${esc(nombreVend)} — ${esc(rolSemSel||'')}, ${esc(DIA_LABEL[rolDiaSel]||rolDiaSel||'')} ${esHoySel?'<span class="chip-hoy">HOY</span>':''}`;
+
+    const filas = ((grupos[rolSemSel]||{})[rolDiaSel]||[])
+      .slice().sort((a,b)=> (Number(a.secuencia)||0) - (Number(b.secuencia)||0));
 
     if (!filas.length){
-      wrap.innerHTML = `<div class="empty"><strong>Sin visitas para este día</strong>No hay clientes en el rol para ${esc(nombreVend)} en ${esc(sem)}, ${esc(dia)}.</div>`;
+      wrap.innerHTML = `<div class="empty"><strong>Sin visitas</strong>No hay clientes para ${esc(rolSemSel||'')}, ${esc(DIA_LABEL[rolDiaSel]||'')}.</div>`;
       return;
     }
 
@@ -1918,32 +2175,30 @@
       const btn = cli
         ? `<button class="btn btn-sm btn-primary" data-rol-visita="${cli.id}">Registrar visita</button>`
         : `<span class="muted small">No está en clientes</span>`;
-      return `<tr>
+      return `<tr class="${esHoySel?'fila-hoy':''}">
         <td data-label="#" class="muted small"><b>${esc(String(r.secuencia||"—"))}</b></td>
         <td data-label="Cod" class="muted small">${esc(r.cod||"—")}</td>
         <td data-label="Cliente"><b>${esc(nombre)}</b>${r.nombre && r.comercial && r.nombre!==r.comercial ? `<div class="muted small">${esc(r.nombre)}</div>` : ""}</td>
         <td class="actions-cell" data-label="">${btn}</td>
       </tr>`;
     }).join("");
-
     wrap.innerHTML = `<table class="data responsive-table"><thead><tr><th>#</th><th>Cod</th><th>Cliente</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
 
     wrap.querySelectorAll("[data-rol-visita]").forEach(b=> b.addEventListener("click", ()=>{
       activarTab("visita");
+      document.getElementById("visFecha").value = todayISO();
       const sel = document.getElementById("visCliente");
       sel.value = b.dataset.rolVisita;
       onVisitaClienteChange();
     }));
   }
 
-  // Cambios en los selectores → re-render y recordar elección
-  ["rolVendedor","rolSemana","rolDia"].forEach(id=>{
-    const el = document.getElementById(id);
-    if (el) el.addEventListener("change", ()=>{
-      localStorage.setItem("rol_vendedor", document.getElementById("rolVendedor").value);
-      localStorage.setItem("rol_semana", document.getElementById("rolSemana").value);
-      renderRolHoy();
-    });
+  // Cambio de vendedor (admin) → recalcula al día de hoy
+  const _selVendRol = document.getElementById("rolVendedor");
+  if (_selVendRol) _selVendRol.addEventListener("change", ()=>{
+    localStorage.setItem("rol_vendedor", _selVendRol.value);
+    rolSemSel = null; rolDiaSel = null;
+    renderRolHoy();
   });
 
   // Importar rol desde Excel
@@ -1997,7 +2252,6 @@
 
   /* ===================== RENDER GENERAL ===================== */
   function renderAll(){
-    renderPanel();
     renderClientes();
     renderProductos();
     renderVisitaSelectores();
